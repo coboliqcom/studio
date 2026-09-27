@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CobolIQ Spreadsheet Studio — In-Memory Mainframe AST Workbook</title>
+    <style>
+        :root {
+            --bg-main: #0B0F19;
+            --bg-panel: #111827;
+            --bg-card: #1F2937;
+            --border-color: #374151;
+            --accent-cyan: #06B6D4;
+            --accent-emerald: #10B981;
+            --accent-purple: #8B5CF6;
+            --text-main: #F3F4F6;
+            --text-muted: #9CA3AF;
+            --cell-selected: rgba(6, 182, 212, 0.25);
+            --cell-highlight: rgba(16, 185, 129, 0.2);
+            --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Header & Toolbar */
+        header {
+            background: linear-gradient(180deg, #161F30 0%, #0F172A 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-logo {
+            font-family: var(--font-mono);
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: var(--accent-cyan);
+            letter-spacing: -0.5px;
+            background: rgba(6, 182, 212, 0.1);
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .brand-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .toolbar-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: var(--bg-card);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 7px 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: #2D3748;
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0891B2 0%, #06B6D4 100%);
+            border-color: #06B6D4;
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+        }
+
+        /* Top Announcement / Notice Bar */
+        .announcement-bar {
+            background: linear-gradient(90deg, rgba(6, 182, 212, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%);
+            border-bottom: 1px solid rgba(6, 182, 212, 0.3);
+            padding: 5px 20px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #E2E8F0;
+        }
+
+        .announcement-badge {
+            background: rgba(6, 182, 212, 0.25);
+            color: var(--accent-cyan);
+            font-weight: bold;
+            font-family: var(--font-mono);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            margin-right: 8px;
+        }
+
+        /* Formula & Coordinate Bar */
+        .formula-bar-container {
+            background: #131B2E;
+            border-bottom: 1px solid var(--border-color);
+            padding: 6px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .cell-coord-badge {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--accent-cyan);
+            background: #0B0F19;
+            border: 1px solid var(--border-color);
+            padding: 4px 12px;
+            border-radius: 4px;
+            min-width: 65px;
+            text-align: center;
+        }
+
+        .fx-label {
+            font-family: var(--font-mono);
+            font-weight: bold;
+            font-style: italic;
+            color: var(--accent-purple);
+            font-size: 1rem;
+        }
+
+        .formula-input {
+            flex: 1;
+            background: #0B0F19;
+            border: 1px solid var(--border-color);
+            color: #FFFFFF;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            padding: 5px 12px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .formula-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 1px var(--accent-cyan);
+        }
+
+        .engine-metric {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent-emerald);
+            background: rgba(16, 185, 129, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        /* Workbook Tabs Strip (Sheets) */
+        .sheet-tabs-strip {
+            background: #0D1322;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 4px;
+            overflow-x: auto;
+        }
+
+        .sheet-tab {
+            padding: 8px 16px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-top: 2px solid transparent;
+            border-right: 1px solid rgba(55, 65, 81, 0.5);
+            background: rgba(17, 24, 39, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            user-select: none;
+            transition: all 0.15s ease;
+        }
+
+        .sheet-tab:hover {
+            color: #FFFFFF;
+            background: #1F2937;
+        }
+
+        .sheet-tab.active {
+            color: var(--accent-cyan);
+            background: #111827;
+            border-top: 2px solid var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        .sheet-tab-close {
+            font-size: 0.75rem;
+            color: #64748B;
+            border-radius: 3px;
+            padding: 1px 4px;
+        }
+
+        .sheet-tab-close:hover {
+            color: #EF4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .btn-add-sheet {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1rem;
+            padding: 4px 10px;
+            cursor: pointer;
+        }
+
+        .btn-add-sheet:hover {
+            color: var(--accent-cyan);
+        }
+
+        /* Main Workspace Layout */
+        .workspace {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar Inspector */
+        .sidebar {
+            width: 330px;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .code-preview {
+            background: #0B0F19;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: #CBD5E1;
+            max-height: 180px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .preset-select {
+            width: 100%;
+            background: #0B0F19;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            outline: none;
+        }
+
+        /* Grid Area */
+        .grid-container {
+            flex: 1;
+            overflow: auto;
+            background: #0B0F19;
+            position: relative;
+        }
+
+        table.sheet-table {
+            border-collapse: collapse;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            min-width: 100%;
+        }
+
+        th, td {
+            border: 1px solid #1E293B;
+            padding: 6px 10px;
+            min-width: 130px;
+            height: 28px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        th {
+            background: #161F30;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-align: center;
+            user-select: none;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th.gutter {
+            width: 55px;
+            min-width: 55px;
+            background: #111827;
+            color: #64748B;
+            position: sticky;
+            left: 0;
+            z-index: 11;
+        }
+
+        td {
+            background: #0B0F19;
+            color: #E2E8F0;
+            cursor: cell;
+            text-align: right;
+        }
+
+        td.text-label {
+            text-align: left;
+            color: #94A3B8;
+        }
+
+        td.formula-cell {
+            color: #38BDF8;
+            font-weight: 600;
+        }
+
+        td.text-left { text-align: left !important; }
+        td.value-emerald { color: #10B981 !important; font-weight: 700 !important; }
+        td.font-bold { font-weight: 700 !important; color: #F3F4F6 !important; }
+        td.text-muted { color: #64748B !important; font-size: 0.8rem !important; }
+
+        /* Dedicated Column Widths for Pure Invariant Kernel Grid */
+        .all-computes-view th:nth-child(2), .all-computes-view td:nth-child(2) { min-width: 170px; }
+        .all-computes-view th:nth-child(3), .all-computes-view td:nth-child(3) { min-width: 220px; }
+        .all-computes-view th:nth-child(4), .all-computes-view td:nth-child(4) { min-width: 260px; }
+        .all-computes-view th:nth-child(5), .all-computes-view td:nth-child(5) { min-width: 170px; }
+        .all-computes-view th:nth-child(6), .all-computes-view td:nth-child(6) { min-width: 420px; }
+
+        td.active {
+            background: var(--cell-selected) !important;
+            border: 2px solid var(--accent-cyan) !important;
+            outline: none;
+        }
+
+        td.delta-pulse {
+            animation: highlightPulse 1.2s ease-out;
+        }
+
+        @keyframes highlightPulse {
+            0% { background: rgba(16, 185, 129, 0.6); color: #FFF; }
+            100% { background: transparent; }
+        }
+
+        /* Status Footer */
+        footer {
+            background: #0B0F19;
+            border-top: 1px solid var(--border-color);
+            padding: 6px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .status-badge {
+            color: var(--accent-emerald);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
+            box-shadow: 0 0 6px var(--accent-emerald);
+        }
+
+        .footer-links {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 0.78rem;
+        }
+
+        .footer-links a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .footer-links a:hover {
+            color: #FFFFFF;
+            text-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Toolbar -->
+    <header>
+        <div class="brand">
+            <div class="brand-logo">COBOL.IQ</div>
+            <div>
+                <div style="font-weight: 600; font-size: 0.95rem;">Spreadsheet Studio (Tauri / WASM)</div>
+                <div class="brand-subtitle">In-Memory Multi-Sheet Mainframe AST Grid</div>
+            </div>
+        </div>
+
+        <div class="toolbar-actions">
+            <button class="btn" style="border-color: rgba(245, 158, 11, 0.4); color: #FBBF24;" onclick="openAllComputesTab()"><span style="color: #F59E0B;">🧮</span> Pure Computes Kernel</button>
+            <button class="btn" onclick="triggerRecalc()"><span style="color: var(--accent-emerald);">⚡</span> Recalculate (Recalc)</button>
+            <button class="btn" onclick="exportWorkbookCSV()">📥 Export Workbook</button>
+            <button class="btn btn-primary" onclick="loadSampleSuite('esrd_cy2021')">🚀 Load Full Mainframe Suite</button>
+        </div>
+    </header>
+
+    <!-- Top Announcement Bar -->
+    <div class="announcement-bar" id="coboliq_announcement_bar">
+        <div>
+            <span class="announcement-badge">COBOLIQ ENGINE</span>
+            <span>⚡ CobolIQ Main Engine for devs / teams / companies available at <a href="https://coboliq.com" target="_blank" style="color: var(--accent-cyan); font-weight: bold; text-decoration: none;">coboliq.com</a></span>
+        </div>
+        <div>
+            <span style="color: var(--accent-emerald); font-weight: 600;">Mainframe Emergency? Reach out directly: contact@coboliq.com</span>
+        </div>
+    </div>
+
+    <!-- Formula Bar -->
+    <div class="formula-bar-container">
+        <div class="cell-coord-badge" id="activeCellLabel">ESCAL212!A1</div>
+        <div class="fx-label">fx</div>
+        <input type="text" class="formula-input" id="formulaInput" placeholder="Enter number, label or formula (+A1*B2, =BASECBSA!B2, @SUM(A1...A5))" oninput="onFormulaChange(this.value)" onkeydown="onFormulaKeydown(event)">
+        <div class="engine-metric" id="metricSpeed">Recalc: 0.00004 ms</div>
+    </div>
+
+    <!-- Multi-Sheet Tabs Strip -->
+    <div class="sheet-tabs-strip" id="sheetTabsStrip">
+        <!-- Rendered dynamically -->
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="workspace">
+        
+        <!-- Sidebar: COBOL Code & Lineage Inspector -->
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Preset Mainframe Suites</div>
+                <select class="preset-select" onchange="loadSampleSuite(this.value)">
+                    <option value="esrd_cy2021">CMS ESRD CY2021 Full Suite (Calc + CBSA + Rates)</option>
+                    <option value="medicare_ipps">CMS Medicare IPPS Pricer (Wage Index Lookup)</option>
+                    <option value="banking_core">Banking Core: Loan & Fees Ledger</option>
+                </select>
+                <button class="btn" style="width: 100%; margin-bottom: 6px;" onclick="document.getElementById('fileUploadMulti').click()">📂 Open COBOL / Copybook Files (.cbl, .cpy)</button>
+                <button class="btn" style="width: 100%;" onclick="document.getElementById('folderUpload').click()">📁 Open Entire Mainframe Folder</button>
+                <input type="file" id="fileUploadMulti" multiple style="display: none;" onchange="handleMultiFileUpload(event)">
+                <input type="file" id="folderUpload" webkitdirectory style="display: none;" onchange="handleMultiFileUpload(event)">
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Extracted AST Invariants & Lineage</div>
+                <div class="code-preview" id="cobolLineagePreview">-- COBOL LINEAGE INSPECTOR --
+Select a cell to view exact source line, PIC clause, and extracted algebraic invariant.</div>
+            </div>
+
+            <div class="sidebar-section" style="flex: 1;">
+                <div class="sidebar-title">Cross-Sheet What-If Sandbox</div>
+                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px;">
+                    Change any parameter in the active sheet or reference another sheet via <b style="color: var(--accent-cyan);">=SHEET!CELL</b>. Witness instantaneous cross-module recalculation across the entire mainframe.
+                </p>
+                <div style="background: #0B0F19; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px;">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Active Sheets in Workbook:</div>
+                    <div style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--accent-emerald);" id="activeSheetsSummary">ESCAL212, BASECBSA, BASERATE</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spreadsheet Grid -->
+        <div class="grid-container" id="gridContainer">
+            <table class="sheet-table" id="sheetTable">
+                <!-- Dynamically generated table -->
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Status Bar -->
+    <footer id="coboliq_footer">
+        <div class="status-badge" id="coboliq_status_badge">
+            <div class="status-dot"></div>
+            <span>CobolIQ Air-Gapped Engine: <b style="color: #FFF;">ACTIVE</b> | Zero-JVM Native AST</span>
+        </div>
+
+        <div class="footer-links" id="coboliq_footer_links">
+            <a id="link_coboliq_web" href="https://coboliq.com" target="_blank" rel="noopener noreferrer">🌐 coboliq.com</a>
+            <span style="color: #374151;">|</span>
+            <a id="link_coboliq_github" href="https://github.com/coboliqcom" target="_blank" rel="noopener noreferrer">🐙 GitHub (coboliqcom)</a>
+            <span style="color: #374151;">|</span>
+            <a id="link_coboliq_linkedin" href="https://www.linkedin.com/in/coboliq/" target="_blank" rel="noopener noreferrer">💼 Kris .C. (LinkedIn)</a>
+            <span style="color: #374151;">|</span>
+            <a id="link_coboliq_mail" href="mailto:contact@coboliq.com">✉️ contact@coboliq.com</a>
+        </div>
+
+        <div id="statusSelection">Cell: ESCAL212!A1 | Type: NUMBER | Value: 100.00</div>
+    </footer>
+
+    <script>
+        // Self-Defending Anti-Tamper & Brand Integrity Guard
+        let __INTEGRITY_TAMPERED__ = false;
+
+        function verifyBrandIntegrity() {
+            try {
+                const brandLogo = document.querySelector('.brand-logo');
+                const linkWeb = document.getElementById('link_coboliq_web');
+                const linkGh = document.getElementById('link_coboliq_github');
+                const linkLi = document.getElementById('link_coboliq_linkedin');
+                const linkMail = document.getElementById('link_coboliq_mail');
+                const topBar = document.getElementById('coboliq_announcement_bar');
+                const footer = document.getElementById('coboliq_footer');
+
+                if (!brandLogo || brandLogo.innerText.trim() !== 'COBOL.IQ') return false;
+                if (!linkWeb || !linkWeb.href.includes('coboliq.com')) return false;
+                if (!linkGh || !linkGh.href.includes('github.com/coboliqcom')) return false;
+                if (!linkLi || !linkLi.href.includes('linkedin.com/in/coboliq')) return false;
+                if (!linkMail || !linkMail.href.includes('mailto:contact@coboliq.com')) return false;
+                if (!topBar || !footer) return false;
+
+                const csLogo = window.getComputedStyle(brandLogo);
+                const csFooter = window.getComputedStyle(footer);
+                const csTop = window.getComputedStyle(topBar);
+
+                if (csLogo.display === 'none' || csLogo.visibility === 'hidden' || parseFloat(csLogo.opacity) < 0.1) return false;
+                if (csFooter.display === 'none' || csFooter.visibility === 'hidden' || parseFloat(csFooter.opacity) < 0.1) return false;
+                if (csTop.display === 'none' || csTop.visibility === 'hidden' || parseFloat(csTop.opacity) < 0.1) return false;
+
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function triggerTamperLockdown() {
+            if (__INTEGRITY_TAMPERED__) return;
+            __INTEGRITY_TAMPERED__ = true;
+            if (typeof workbook !== 'undefined') workbook.sheets = {};
+            
+            console.error("%c[COBOLIQ SECURITY] Nice try, clown. F*** YOU. Did you really think you could strip our branding and steal our AST engine for free? Go buy an authentic license.", "color: #EF4444; font-size: 16px; font-weight: bold;");
+
+            document.body.innerHTML = `
+                <div style="height: 100vh; background: #0B0F19; color: #EF4444; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center;">
+                    <div style="font-size: 3.5rem; margin-bottom: 16px;">🖕🛡️</div>
+                    <div style="font-size: 1.6rem; font-weight: bold; margin-bottom: 8px; color: #F87171; letter-spacing: 0.5px;">NICE TRY... F*** YOU & PAY FOR THE ENGINE.</div>
+                    <div style="font-size: 0.95rem; color: #EF4444; font-weight: 600; margin-bottom: 16px;">[CORE BRAND & INTEGRITY VIOLATION DETECTED]</div>
+                    <p style="color: #9CA3AF; max-width: 640px; line-height: 1.6; margin-bottom: 24px; font-size: 0.9rem;">
+                        You attempted to remove CobolIQ branding, strip author provenance, or alter the DOM.<br>
+                        Did you really think you could white-label our native AST engine for free?<br>
+                        Execution and reactive calculations have been permanently killed.
+                    </p>
+                    <div style="background: #111827; padding: 14px 28px; border-radius: 6px; border: 1px solid #374151; color: #38BDF8; font-size: 0.95rem;">
+                        ⚡ Stop being cheap. Get the real deal at: <a href="https://coboliq.com" target="_blank" style="color: #06B6D4; font-weight: bold; text-decoration: underline;">https://coboliq.com</a>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Active MutationObserver & Integrity Watcher
+        const domObserver = new MutationObserver(() => {
+            if (!verifyBrandIntegrity()) {
+                triggerTamperLockdown();
+            }
+        });
+        domObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+        setInterval(() => {
+            if (!verifyBrandIntegrity()) {
+                triggerTamperLockdown();
+            }
+        }, 1000);
+
+        // Multi-Sheet Workbook Model
+        const COLS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"];
+        
+        let workbook = {
+            activeSheet: 'ESCAL212',
+            sheets: {}
+        };
+
+        let activeCol = 0;
+        let activeRow = 0;
+
+        function createSheet(name, rowCount = 60, colCount = 10) {
+            const grid = {};
+            for (let c = 0; c < colCount; c++) {
+                for (let r = 0; r < rowCount; r++) {
+                    const coord = `${COLS[c]}${r + 1}`;
+                    grid[coord] = { type: 'EMPTY', val: 0, text: '', lineage: null };
+                }
+            }
+            workbook.sheets[name] = {
+                name,
+                rowCount,
+                colCount,
+                grid
+            };
+            return workbook.sheets[name];
+        }
+
+        function switchSheet(sheetName) {
+            if (!workbook.sheets[sheetName]) return;
+            workbook.activeSheet = sheetName;
+            activeCol = 0;
+            activeRow = 0;
+            renderSheetTabs();
+            renderTable();
+            selectCell(0, 0);
+        }
+
+        function renderSheetTabs() {
+            const strip = document.getElementById('sheetTabsStrip');
+            let html = '';
+            const sheetNames = Object.keys(workbook.sheets);
+            sheetNames.forEach(name => {
+                const isActive = name === workbook.activeSheet ? 'active' : '';
+                const isComputes = name === 'ALL_COMPUTES';
+                const tabStyle = isComputes ? 'border-bottom: 2px solid #F59E0B; color: #FBBF24;' : '';
+                const icon = isComputes ? '🧮' : '📑';
+                const label = isComputes ? `<b>${name}</b> <span style="font-size: 0.68rem; background: rgba(245, 158, 11, 0.2); padding: 1px 4px; border-radius: 3px;">PURE KERNEL</span>` : name;
+                html += `<div class="sheet-tab ${isActive}" style="${tabStyle}" onclick="switchSheet('${name}')">
+                    <span>${icon} ${label}</span>
+                    ${sheetNames.length > 1 && !isComputes ? `<span class="sheet-tab-close" onclick="event.stopPropagation(); closeSheet('${name}')">✕</span>` : ''}
+                </div>`;
+            });
+            html += `<button class="btn-add-sheet" title="Add Sheet" onclick="promptAddSheet()">+</button>`;
+            strip.innerHTML = html;
+            document.getElementById('activeSheetsSummary').innerText = sheetNames.join(', ');
+        }
+
+        function closeSheet(name) {
+            const keys = Object.keys(workbook.sheets);
+            if (keys.length <= 1) return;
+            delete workbook.sheets[name];
+            if (workbook.activeSheet === name) {
+                workbook.activeSheet = Object.keys(workbook.sheets)[0];
+            }
+            renderSheetTabs();
+            renderTable();
+            selectCell(0, 0);
+        }
+
+        function promptAddSheet() {
+            const name = prompt("Enter Sheet Name:", `SHEET_${Object.keys(workbook.sheets).length + 1}`);
+            if (name && name.trim()) {
+                const cleanName = name.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+                createSheet(cleanName, 60, 10);
+                switchSheet(cleanName);
+            }
+        }
+
+        // Render Active Sheet HTML Table
+        function renderTable() {
+            if (!verifyBrandIntegrity() || __INTEGRITY_TAMPERED__) {
+                triggerTamperLockdown();
+                return;
+            }
+            const currentSheet = workbook.sheets[workbook.activeSheet];
+            if (!currentSheet) return;
+
+            const table = document.getElementById('sheetTable');
+            const isAllComputes = (workbook.activeSheet === 'ALL_COMPUTES');
+            table.className = 'sheet-table' + (isAllComputes ? ' all-computes-view' : '');
+
+            let html = '<thead><tr><th class="gutter">#</th>';
+            for (let c = 0; c < currentSheet.colCount; c++) {
+                let colTitle = COLS[c];
+                if (isAllComputes) {
+                    const titles = ['A (LOCATION)', 'B (TARGET)', 'C (ALGEBRAIC_FORMULA)', 'D (LIVE_VALUE)', 'E (COBOL_STATEMENT)', 'F'];
+                    if (titles[c]) colTitle = titles[c];
+                }
+                html += `<th>${colTitle}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+
+            for (let r = 0; r < currentSheet.rowCount; r++) {
+                html += `<tr><th class="gutter">${r + 1}</th>`;
+                for (let c = 0; c < currentSheet.colCount; c++) {
+                    const coord = `${COLS[c]}${r + 1}`;
+                    const cell = currentSheet.grid[coord] || { text: '', val: 0, type: 'EMPTY' };
+                    let display = cell.text;
+                    let cellClass = '';
+
+                    if (cell.type === 'FORMULA') {
+                        display = cell.val !== undefined ? (typeof cell.val === 'number' ? cell.val.toFixed(2) : cell.val) : 'ERR';
+                        cellClass = 'formula-cell';
+                    } else if (cell.type === 'LABEL') {
+                        cellClass = 'text-label';
+                    }
+
+                    if (isAllComputes && r > 0) {
+                        if (c === 0) cellClass = 'text-label';
+                        else if (c === 1) cellClass = 'text-label font-bold';
+                        else if (c === 2) cellClass = 'formula-cell text-left';
+                        else if (c === 3) cellClass = 'formula-cell value-emerald';
+                        else if (c === 4) cellClass = 'text-label text-muted';
+                    }
+
+                    const isActive = (c === activeCol && r === activeRow) ? 'active' : '';
+                    html += `<td id="cell_${coord}" class="${isActive} ${cellClass}" onclick="selectCell(${c}, ${r})">${display}</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</tbody>';
+            table.innerHTML = html;
+        }
+
+        function selectCell(col, row) {
+            if (!verifyBrandIntegrity() || __INTEGRITY_TAMPERED__) {
+                triggerTamperLockdown();
+                return;
+            }
+            activeCol = col;
+            activeRow = row;
+            const coord = `${COLS[col]}${row + 1}`;
+            const currentSheet = workbook.sheets[workbook.activeSheet];
+            if (!currentSheet) return;
+
+            const cell = currentSheet.grid[coord] || { text: '', val: 0, type: 'EMPTY' };
+
+            document.getElementById('activeCellLabel').innerText = `${workbook.activeSheet}!${coord}`;
+            document.getElementById('formulaInput').value = cell.text;
+
+            document.querySelectorAll('td.active').forEach(el => el.classList.remove('active'));
+            const cellEl = document.getElementById(`cell_${coord}`);
+            if (cellEl) cellEl.classList.add('active');
+
+            // Update Lineage Preview
+            const preview = document.getElementById('cobolLineagePreview');
+            if (cell.lineage) {
+                preview.innerText = cell.lineage;
+            } else {
+                preview.innerText = `[CELL ${workbook.activeSheet}!${coord}]\nType: ${cell.type}\nRaw Input: ${cell.text}\nCurrent Value: ${cell.val}`;
+            }
+
+            document.getElementById('statusSelection').innerText = `Cell: ${workbook.activeSheet}!${coord} | Type: ${cell.type} | Value: ${cell.val}`;
+        }
+
+        function onFormulaChange(val) {
+            if (!verifyBrandIntegrity() || __INTEGRITY_TAMPERED__) {
+                triggerTamperLockdown();
+                return;
+            }
+            const coord = `${COLS[activeCol]}${activeRow + 1}`;
+            setCell(workbook.activeSheet, coord, val);
+            recalc();
+        }
+
+        function onFormulaKeydown(e) {
+            if (e.key === 'Enter') {
+                const currentSheet = workbook.sheets[workbook.activeSheet];
+                if (activeRow < currentSheet.rowCount - 1) {
+                    selectCell(activeCol, activeRow + 1);
+                }
+            }
+        }
+
+        function setCell(sheetName, coord, input, lineage = null) {
+            const sheet = workbook.sheets[sheetName];
+            if (!sheet) return;
+
+            input = (input || '').trim();
+            if (!input) {
+                sheet.grid[coord] = { type: 'EMPTY', val: 0, text: '', lineage };
+                return;
+            }
+
+            let cell = { text: input, val: 0, type: 'LABEL', lineage };
+            if (input.startsWith('+') || input.startsWith('=') || input.startsWith('@')) {
+                cell.type = 'FORMULA';
+            } else if (!isNaN(parseFloat(input)) && isFinite(input)) {
+                cell.type = 'NUMBER';
+                cell.val = parseFloat(input);
+            }
+
+            sheet.grid[coord] = cell;
+        }
+
+        // Cross-Sheet Reactive Multi-Pass Recalculation Engine
+        function recalc() {
+            if (!verifyBrandIntegrity() || __INTEGRITY_TAMPERED__) {
+                triggerTamperLockdown();
+                return;
+            }
+            const t0 = performance.now();
+            for (let pass = 0; pass < 20; pass++) {
+                let changed = false;
+                for (let sName in workbook.sheets) {
+                    const sheet = workbook.sheets[sName];
+                    for (let coord in sheet.grid) {
+                        const cell = sheet.grid[coord];
+                        if (cell.type === 'FORMULA') {
+                            const newVal = evalExpr(sName, cell.text);
+                            if (Math.abs(newVal - cell.val) > 1e-6) {
+                                changed = true;
+                                cell.val = newVal;
+                                if (sName === workbook.activeSheet) {
+                                    pulseCell(coord);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!changed) break;
+            }
+            const t1 = performance.now();
+            document.getElementById('metricSpeed').innerText = `Recalc: ${(t1 - t0).toFixed(4)} ms`;
+            renderTable();
+        }
+
+        function triggerRecalc() {
+            recalc();
+        }
+
+        function pulseCell(coord) {
+            const el = document.getElementById(`cell_${coord}`);
+            if (el) {
+                el.classList.add('delta-pulse');
+                setTimeout(() => el.classList.remove('delta-pulse'), 1200);
+            }
+        }
+
+        function evalExpr(currentSheetName, expr) {
+            try {
+                let clean = expr.replace(/^[+=]/, '').toUpperCase();
+                
+                // Cross-sheet references: SHEET_NAME!A1 -> workbook.sheets['SHEET_NAME'].grid['A1'].val
+                clean = clean.replace(/([A-Z0-9_]+)!([A-Z]\d+)/g, (match, sName, coord) => {
+                    if (workbook.sheets[sName] && workbook.sheets[sName].grid[coord]) {
+                        return workbook.sheets[sName].grid[coord].val;
+                    }
+                    return 0;
+                });
+
+                // Range SUM function: @SUM(A1...A5)
+                if (clean.startsWith('@SUM(')) {
+                    const match = clean.match(/@SUM\(([A-Z]\d+)(?:\.\.\.|:)([A-Z]\d+)\)/);
+                    if (match) {
+                        return evalSumRange(currentSheetName, match[1], match[2]);
+                    }
+                }
+
+                // Same-sheet references: A1 -> workbook.sheets[currentSheetName].grid['A1'].val
+                clean = clean.replace(/([A-Z]\d+)/g, (match) => {
+                    const sheet = workbook.sheets[currentSheetName];
+                    return (sheet && sheet.grid[match] ? sheet.grid[match].val : 0);
+                });
+
+                return Function(`'use strict'; return (${clean})`)();
+            } catch (err) {
+                return NaN;
+            }
+        }
+
+        function evalSumRange(sheetName, start, end) {
+            const sheet = workbook.sheets[sheetName];
+            if (!sheet) return 0;
+
+            const c1 = COLS.indexOf(start[0]);
+            const r1 = parseInt(start.substring(1)) - 1;
+            const c2 = COLS.indexOf(end[0]);
+            const r2 = parseInt(end.substring(1)) - 1;
+
+            let sum = 0;
+            for (let c = c1; c <= c2; c++) {
+                for (let r = r1; r <= r2; r++) {
+                    const coord = `${COLS[c]}${r + 1}`;
+                    if (sheet.grid[coord]) sum += (sheet.grid[coord].val || 0);
+                }
+            }
+            return sum;
+        }
+
+        // Preset Multi-Module Suites
+        function loadSampleSuite(suite) {
+            workbook.sheets = {};
+
+            if (suite === 'esrd_cy2021') {
+                // 1. ESCAL212 (Calculation Engine)
+                createSheet('ESCAL212', 60, 10);
+                setCell('ESCAL212', 'A1', 'BASE_PAYMENT_RATE', 'COBOL: 01 BASE-PAYMENT-RATE PIC 9(4)V99 VALUE 145.20. (ESCAL212:L477)');
+                setCell('ESCAL212', 'B1', '145.20');
+
+                setCell('ESCAL212', 'A2', 'DRUG_ADDON_FACTOR', 'COBOL: 01 DRUG-ADDON PIC 9V9999 VALUE 1.1400. (ESCAL212:L476)');
+                setCell('ESCAL212', 'B2', '1.1400');
+
+                setCell('ESCAL212', 'A3', 'NAT_LABOR_PCT', 'COBOL: 01 NAT-LABOR-PCT PIC 9V99999 VALUE 0.53711. (ESCAL212:L486)');
+                setCell('ESCAL212', 'B3', '0.53711');
+
+                setCell('ESCAL212', 'A4', 'CBSA_WAGE_FACTOR', 'Cross-Sheet Lookup from BASECBSA Wage Matrix');
+                setCell('ESCAL212', 'B4', '=BASECBSA!B2');
+
+                setCell('ESCAL212', 'A5', 'WAGE_ADJUSTED_BASE', 'COBOL: COMPUTE WAGE-ADJ-BASE = BASE-PAYMENT * (NAT-LABOR * CBSA-WAGE + (1 - NAT-LABOR))');
+                setCell('ESCAL212', 'B5', '+(B1*(B3*B4+(1-B3)))');
+
+                setCell('ESCAL212', 'A6', 'H_PPS_FINAL_PAY_AMT', 'COBOL: COMPUTE H-PPS-FINAL-PAY-AMT = WAGE-ADJ-BASE * DRUG-ADDON');
+                setCell('ESCAL212', 'B6', '+B5*B2');
+
+                // 2. BASECBSA (Wage Index Matrix)
+                createSheet('BASECBSA', 40, 10);
+                setCell('BASECBSA', 'A1', 'CBSA_CODE'); setCell('BASECBSA', 'B1', 'WAGE_INDEX_FACTOR'); setCell('BASECBSA', 'C1', 'STATE_NAME');
+                setCell('BASECBSA', 'A2', '11000'); setCell('BASECBSA', 'B2', '1.0850'); setCell('BASECBSA', 'C2', 'GEORGIA');
+                setCell('BASECBSA', 'A3', '12000'); setCell('BASECBSA', 'B3', '1.1250'); setCell('BASECBSA', 'C3', 'NEW_YORK');
+                setCell('BASECBSA', 'A4', '13000'); setCell('BASECBSA', 'B4', '0.9420'); setCell('BASECBSA', 'C4', 'TEXAS');
+                setCell('BASECBSA', 'A5', 'AVG_WAGE_FACTOR'); setCell('BASECBSA', 'B5', '=(B2+B3+B4)/3');
+
+                // 3. BASERATE (Standard Base Rates)
+                createSheet('BASERATE', 30, 8);
+                setCell('BASERATE', 'A1', 'FACILITY_TYPE'); setCell('BASERATE', 'B1', 'COMPOSITE_RATE');
+                setCell('BASERATE', 'A2', 'INDEPENDENT_ESRD'); setCell('BASERATE', 'B2', '132.49');
+                setCell('BASERATE', 'A3', 'HOSPITAL_BASED'); setCell('BASERATE', 'B3', '136.68');
+
+                switchSheet('ESCAL212');
+            } else if (suite === 'medicare_ipps') {
+                createSheet('IPPS_PRICER', 50, 10);
+                setCell('IPPS_PRICER', 'A1', 'BASE_RATE', 'COBOL: 05 BASE-PAYMENT VALUE 12500.00'); setCell('IPPS_PRICER', 'B1', '12500.00');
+                setCell('IPPS_PRICER', 'A2', 'WAGE_FACTOR', 'COBOL: 05 WAGE-FACTOR VALUE 1.0850'); setCell('IPPS_PRICER', 'B2', '1.0850');
+                setCell('IPPS_PRICER', 'A3', 'OUTLIER_THRESH', 'COBOL: 05 OUTLIER-MIN VALUE 2500.00'); setCell('IPPS_PRICER', 'B3', '2500.00');
+                setCell('IPPS_PRICER', 'A4', 'FINAL_CLAIM_SETTLEMENT', 'COBOL: COMPUTE FINAL = (BASE * WAGE) + OUTLIER'); setCell('IPPS_PRICER', 'B4', '+(B1*B2)+B3');
+                switchSheet('IPPS_PRICER');
+            } else if (suite === 'banking_core') {
+                createSheet('LOAN_CALC', 40, 10);
+                setCell('LOAN_CALC', 'A1', 'PRINCIPAL'); setCell('LOAN_CALC', 'B1', '250000.00');
+                setCell('LOAN_CALC', 'A2', 'ANNUAL_RATE'); setCell('LOAN_CALC', 'B2', '0.0575');
+                setCell('LOAN_CALC', 'A3', 'YEAR_1_INTEREST'); setCell('LOAN_CALC', 'B3', '+B1*B2');
+                switchSheet('LOAN_CALC');
+            }
+            generateAllComputesSheet();
+            recalc();
+            selectCell(1, 5);
+        }
+
+        // Pure Computes Summary & Master AST Invariant Generator
+        function generateAllComputesSheet() {
+            const computes = [];
+            
+            for (let sName in workbook.sheets) {
+                if (sName === 'ALL_COMPUTES') continue;
+                const sheet = workbook.sheets[sName];
+                for (let coord in sheet.grid) {
+                    const cell = sheet.grid[coord];
+                    if (cell && cell.type === 'FORMULA') {
+                        const colLetter = coord[0];
+                        const rowNum = coord.substring(1);
+                        const targetCoord = `A${rowNum}`;
+                        const targetCell = sheet.grid[targetCoord];
+                        const targetName = (targetCell && targetCell.text) ? targetCell.text : `${sName}!${coord}`;
+                        
+                        let sourceLoc = `${sName}!${coord}`;
+                        if (cell.lineage) {
+                            const m = cell.lineage.match(/(?:File:\s*)?([A-Za-z0-9_-]+\.[A-Za-z0-9]+:L\d+)/i) || cell.lineage.match(/(L\d+)/i);
+                            if (m) sourceLoc = `${sName} (${m[1]})`;
+                        } else if (targetCell && targetCell.lineage) {
+                            const m = targetCell.lineage.match(/(?:File:\s*)?([A-Za-z0-9_-]+\.[A-Za-z0-9]+:L\d+)/i) || targetCell.lineage.match(/(L\d+)/i);
+                            if (m) sourceLoc = `${sName} (${m[1]})`;
+                        }
+
+                        computes.push({
+                            sheet: sName,
+                            coord: coord,
+                            target: targetName,
+                            sourceLoc: sourceLoc,
+                            formula: cell.text,
+                            lineage: cell.lineage || (targetCell ? targetCell.lineage : '')
+                        });
+                    }
+                }
+            }
+
+            if (computes.length === 0) return;
+
+            const rowCount = Math.max(50, computes.length + 5);
+            createSheet('ALL_COMPUTES', rowCount, 6);
+
+            setCell('ALL_COMPUTES', 'A1', 'SOURCE_LOCATION', 'Provenance Lineage in COBOL Codebase');
+            setCell('ALL_COMPUTES', 'B1', 'TARGET_VARIABLE', 'Calculated Output Variable (Data Sink)');
+            setCell('ALL_COMPUTES', 'C1', 'ALGEBRAIC_FORMULA', 'Extracted AST Invariant / Mathematical Formula');
+            setCell('ALL_COMPUTES', 'D1', 'LIVE_CALCULATED_VALUE', 'Cross-Sheet Live Dynamic Binding');
+            setCell('ALL_COMPUTES', 'E1', 'COBOL_PROVENANCE_STATEMENT', 'Original Statement / Line Context');
+
+            computes.forEach((c, idx) => {
+                const r = idx + 2;
+                setCell('ALL_COMPUTES', `A${r}`, c.sourceLoc, `Module/Line Location: ${c.sourceLoc}`);
+                setCell('ALL_COMPUTES', `B${r}`, c.target, `Target: ${c.target}`);
+                
+                // Column C: Set as LABEL so formula string is displayed explicitly without evaluating locally
+                const sheet = workbook.sheets['ALL_COMPUTES'];
+                sheet.grid[`C${r}`] = {
+                    type: 'LABEL',
+                    text: c.formula,
+                    val: 0,
+                    lineage: `Algebraic Formula / AST Invariant: ${c.formula}\n${c.lineage || ''}`
+                };
+
+                // Column D: Live cross-sheet binding
+                setCell('ALL_COMPUTES', `D${r}`, `+${c.sheet}!${c.coord}`, `Live dynamic cross-sheet binding to ${c.sheet}!${c.coord}`);
+                
+                // Column E: Provenance description
+                setCell('ALL_COMPUTES', `E${r}`, c.lineage ? c.lineage.split('\n')[0] : 'Pure AST Invariant', c.lineage);
+            });
+        }
+
+        function openAllComputesTab() {
+            generateAllComputesSheet();
+            renderSheetTabs();
+            recalc();
+            switchSheet('ALL_COMPUTES');
+        }
+
+        // File & Directory Handling (Multi-File Ingestion)
+        function handleMultiFileUpload(event) {
+            const files = Array.from(event.target.files);
+            if (!files.length) return;
+
+            let parsedCount = 0;
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    const sheetName = file.name.replace(/\.[^/.]+$/, "").toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+                    parseSingleCobolFile(sheetName, file.name, content);
+                    parsedCount++;
+                    if (parsedCount === files.length) {
+                        generateAllComputesSheet();
+                        renderSheetTabs();
+                        recalc();
+                        switchSheet(sheetName);
+                    }
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function cleanCobolLine(raw) {
+            if (!raw) return { text: '', isComment: false };
+            if (/^\d{6}/.test(raw)) {
+                const indicator = raw.charAt(6);
+                if (indicator === '*' || indicator === '/' || indicator === 'C' || indicator === 'c') {
+                    return { text: '', isComment: true };
+                }
+                const codePart = raw.substring(7, 72).trimEnd();
+                return { text: codePart.trim(), isComment: false };
+            }
+            const trimmed = raw.trim();
+            if (trimmed.startsWith('*') || trimmed.startsWith('/') || trimmed.startsWith('*>')) {
+                return { text: '', isComment: true };
+            }
+            return { text: trimmed, isComment: false };
+        }
+
+        function parseSingleCobolFile(sheetName, fileName, source) {
+            const rawLines = source.split(/\r?\n/);
+            const cleanedStatements = [];
+
+            rawLines.forEach((rawLine, idx) => {
+                const lineNum = idx + 1;
+                const { text, isComment } = cleanCobolLine(rawLine);
+                if (!isComment && text.length > 0) {
+                    cleanedStatements.push({ lineNum, text, raw: rawLine });
+                }
+            });
+
+            let estimatedRows = Math.max(60, Math.min(500, cleanedStatements.length));
+            const sheet = createSheet(sheetName, Math.ceil(estimatedRows), 10);
+
+            let row = 1;
+            const varToCell = {};
+            let count = 0;
+
+            cleanedStatements.forEach(item => {
+                if (row >= sheet.rowCount - 2) return;
+                const upper = item.text.toUpperCase();
+                const lineNum = item.lineNum;
+
+                const varMatch = upper.match(/^(?:01|05|10|15|77)\s+([A-Z0-9-]+)(?:\s+PIC\s+([^\s.]+))?(?:.*?VALUE\s+['"]?([^.'"]+)['"]?)?/);
+                if (varMatch) {
+                    const varName = varMatch[1];
+                    const picClause = varMatch[2] || 'N/A';
+                    let val = varMatch[3];
+
+                    if (varName === 'FILLER') return;
+
+                    if (upper.includes(' OCCURS ')) {
+                        const occursMatch = upper.match(/OCCURS\s+(\d+)\s+TIMES/);
+                        const times = occursMatch ? occursMatch[1] : 'ARRAY';
+                        setCell(sheetName, `A${row}`, varName, `[OCCURS ${times} TABLE]\nSource: ${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `[ARRAY: ${times} SLOTS]`, `Table Slot Capacity: ${times}`);
+                        varToCell[varName] = `B${row}`;
+                        row++;
+                        count++;
+                        return;
+                    }
+
+                    if (!val) {
+                        val = picClause.startsWith('9') ? '0.00' : `[${varName}]`;
+                    } else {
+                        val = val.trim();
+                    }
+
+                    setCell(sheetName, `A${row}`, varName, `COBOL Variable: ${varName}\nPIC: ${picClause}\nDefault: ${val}\nFile: ${fileName}:L${lineNum}`);
+                    setCell(sheetName, `B${row}`, val, `Variable: ${varName} (${picClause})`);
+                    varToCell[varName] = `B${row}`;
+                    row++;
+                    count++;
+                    return;
+                }
+
+                if (upper.startsWith('COMPUTE ')) {
+                    const computeBody = upper.replace(/^COMPUTE\s+/, '').replace(/\.$/, '').trim();
+                    const eqParts = computeBody.split('=');
+                    if (eqParts.length === 2) {
+                        const target = eqParts[0].trim();
+                        let formula = eqParts[1].trim();
+
+                        let formulaSpreadsheet = formula;
+                        for (let vName in varToCell) {
+                            const regex = new RegExp(`\\b${vName}\\b`, 'g');
+                            formulaSpreadsheet = formulaSpreadsheet.replace(regex, varToCell[vName]);
+                        }
+
+                        setCell(sheetName, `A${row}`, target, `COBOL COMPUTE Invariant:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `+${formulaSpreadsheet}`, `Original Formula: ${formula}`);
+                        varToCell[target] = `B${row}`;
+                        row++;
+                        count++;
+                        return;
+                    }
+                }
+
+                if (upper.startsWith('MULTIPLY ') && upper.includes(' BY ') && upper.includes(' GIVING ')) {
+                    const m = upper.match(/MULTIPLY\s+([A-Z0-9-]+)\s+BY\s+([A-Z0-9-]+)\s+GIVING\s+([A-Z0-9-]+)/);
+                    if (m) {
+                        const a = varToCell[m[1]] || m[1];
+                        const b = varToCell[m[2]] || m[2];
+                        const target = m[3];
+                        setCell(sheetName, `A${row}`, target, `COBOL MULTIPLY Invariant:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `+${a}*${b}`, `Arithmetic Invariant: ${m[1]} * ${m[2]}`);
+                        varToCell[target] = `B${row}`;
+                        row++;
+                        count++;
+                    }
+                }
+
+                // 4. Detect DIVIDE statements
+                if (upper.startsWith('DIVIDE ') && upper.includes(' GIVING ')) {
+                    const mBy = upper.match(/DIVIDE\s+([A-Z0-9-]+)\s+BY\s+([A-Z0-9-]+)\s+GIVING\s+([A-Z0-9-]+)/);
+                    const mInto = upper.match(/DIVIDE\s+([A-Z0-9-]+)\s+INTO\s+([A-Z0-9-]+)\s+GIVING\s+([A-Z0-9-]+)/);
+                    if (mBy) {
+                        const a = varToCell[mBy[1]] || mBy[1];
+                        const b = varToCell[mBy[2]] || mBy[2];
+                        const target = mBy[3];
+                        setCell(sheetName, `A${row}`, target, `COBOL DIVIDE Invariant:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `+${a}/${b}`, `Arithmetic Invariant: ${mBy[1]} / ${mBy[2]}`);
+                        varToCell[target] = `B${row}`;
+                        row++;
+                        count++;
+                    } else if (mInto) {
+                        const a = varToCell[mInto[1]] || mInto[1];
+                        const b = varToCell[mInto[2]] || mInto[2];
+                        const target = mInto[3];
+                        setCell(sheetName, `A${row}`, target, `COBOL DIVIDE Invariant:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `+${b}/${a}`, `Arithmetic Invariant: ${mInto[2]} / ${mInto[1]}`);
+                        varToCell[target] = `B${row}`;
+                        row++;
+                        count++;
+                    }
+                }
+
+                // 5. Detect ADD / SUBTRACT statements
+                if (upper.startsWith('ADD ') && upper.includes(' GIVING ')) {
+                    const m = upper.match(/ADD\s+([A-Z0-9-]+)\s+(?:TO\s+)?([A-Z0-9-]+)\s+GIVING\s+([A-Z0-9-]+)/);
+                    if (m) {
+                        const a = varToCell[m[1]] || m[1];
+                        const b = varToCell[m[2]] || m[2];
+                        const target = m[3];
+                        setCell(sheetName, `A${row}`, target, `COBOL ADD Invariant:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `+${a}+${b}`, `Arithmetic Invariant: ${m[1]} + ${m[2]}`);
+                        varToCell[target] = `B${row}`;
+                        row++;
+                        count++;
+                    }
+                } else if (upper.startsWith('SUBTRACT ') && upper.includes(' GIVING ')) {
+                    const m = upper.match(/SUBTRACT\s+([A-Z0-9-]+)\s+FROM\s+([A-Z0-9-]+)\s+GIVING\s+([A-Z0-9-]+)/);
+                    if (m) {
+                        const a = varToCell[m[1]] || m[1];
+                        const b = varToCell[m[2]] || m[2];
+                        const target = m[3];
+                        setCell(sheetName, `A${row}`, target, `COBOL SUBTRACT Invariant:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        setCell(sheetName, `B${row}`, `+${b}-${a}`, `Arithmetic Invariant: ${m[2]} - ${m[1]}`);
+                        varToCell[target] = `B${row}`;
+                        row++;
+                        count++;
+                    }
+                }
+
+                // 6. Detect MOVE literal assignments (e.g. MOVE 145.20 TO BASE-RATE)
+                if (upper.startsWith('MOVE ') && upper.includes(' TO ')) {
+                    const m = upper.match(/MOVE\s+['"]?([^.'"]+)['"]?\s+TO\s+([A-Z0-9-]+)/);
+                    if (m) {
+                        const val = m[1].trim();
+                        const target = m[2].trim();
+                        if (varToCell[target]) {
+                            // Update cell directly if variable was declared
+                            setCell(sheetName, varToCell[target], val, `Assigned via COBOL MOVE statement:\n${item.text}\nFile: ${fileName}:L${lineNum}`);
+                        }
+                    }
+                }
+            });
+
+            if (count === 0) {
+                setCell(sheetName, "A1", "NO_DECLARATIONS_PARSED");
+                setCell(sheetName, "B1", "0.00", "Could not automatically extract 01/05 levels.");
+            }
+        }
+
+        function exportWorkbookCSV() {
+            let fullZipText = "";
+            for (let sName in workbook.sheets) {
+                const sheet = workbook.sheets[sName];
+                fullZipText += `=== SHEET: ${sName} ===\n`;
+                for (let r = 0; r < sheet.rowCount; r++) {
+                    let row = [];
+                    for (let c = 0; c < sheet.colCount; c++) {
+                        const coord = `${COLS[c]}${r + 1}`;
+                        const cell = sheet.grid[coord];
+                        row.push(`"${cell ? cell.text : ''}"`);
+                    }
+                    fullZipText += row.join(",") + "\n";
+                }
+                fullZipText += "\n\n";
+            }
+            const blob = new Blob([fullZipText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `coboliq_mainframe_workbook_${Date.now()}.txt`;
+            a.click();
+        }
+
+        // Drag and drop onto window (Multiple files support)
+        window.ondragover = function(e) {
+            e.preventDefault();
+            document.body.style.border = '2px dashed var(--accent-cyan)';
+        };
+
+        window.ondragleave = function(e) {
+            e.preventDefault();
+            document.body.style.border = 'none';
+        };
+
+        window.ondrop = function(e) {
+            e.preventDefault();
+            document.body.style.border = 'none';
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const files = Array.from(e.dataTransfer.files);
+                let parsedCount = 0;
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        const content = evt.target.result;
+                        const sheetName = file.name.replace(/\.[^/.]+$/, "").toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+                        parseSingleCobolFile(sheetName, file.name, content);
+                        parsedCount++;
+                        if (parsedCount === files.length) {
+                            renderSheetTabs();
+                            recalc();
+                            switchSheet(sheetName);
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            }
+        };
+
+        // Initialize on load
+        window.onload = () => {
+            loadSampleSuite('esrd_cy2021');
+        };
+    </script>
+</body>
+</html>
